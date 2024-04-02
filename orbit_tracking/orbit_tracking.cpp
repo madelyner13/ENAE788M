@@ -72,16 +72,36 @@ public:
 		offboard_control_mode_publisher_ = this->create_publisher<OffboardControlMode>("/fmu/in/offboard_control_mode", 10);
 		trajectory_setpoint_publisher_ = this->create_publisher<TrajectorySetpoint>("/fmu/in/trajectory_setpoint", 10);
 		vehicle_command_publisher_ = this->create_publisher<VehicleCommand>("/fmu/in/vehicle_command", 10);
+        rmw_qos_profile_t qos_profile = rmw_qos_profile_sensor_data;
+        auto qos = rclcpp::QoS(rclcpp::QoSInitialization(qos_profile.history, 5), qos_profile);
+
+        vehicle_command_listener_ = this->create_subscription<VehicleControlMode>("/fmu/out/vehicle_control_mode", qos, [this](const px4_msgs::msg::VehicleControlMode::UniquePtr msg){
+            c_mode = *msg;
+            //if(c_mode.flag_control_offboard_enabled==1){
+            //    printf("offboard away!!!");
+            // }
+        });
 
 		offboard_setpoint_counter_ = 0;
-		offboard_sub_counter_ = 0;
+
+
+
 		InitPath();
 
 		auto timer_callback = [this]() -> void {
 
 
 			// offboard_control_mode needs to be paired with trajectory_setpoint
-			publish_offboard_control_mode();
+
+			
+            double intpart;
+            //printf("modf:%7.3f", );
+            if(modf(((double)offboard_setpoint_counter_)/2, &intpart)==0.0){
+                publish_offboard_control_mode();
+                //printf("published mode msg");
+
+            }
+            //print(modf(offboard_setpoint_counter_/5, &intpart))
 			publish_trajectory_setpoint();
 
 
@@ -96,17 +116,19 @@ private:
 	rclcpp::Publisher<OffboardControlMode>::SharedPtr offboard_control_mode_publisher_;
 	rclcpp::Publisher<TrajectorySetpoint>::SharedPtr trajectory_setpoint_publisher_;
 	rclcpp::Publisher<VehicleCommand>::SharedPtr vehicle_command_publisher_;
+    rclcpp::Subscription<VehicleControlMode>::SharedPtr vehicle_command_listener_;
 
 	std::atomic<uint64_t> timestamp_;   //!< common synced timestamped
+    
 
 	uint64_t offboard_setpoint_counter_;   //!< counter for the number of setpoints sent
-        uint64_t offboard_sub_counter_;   //!< counter for the number of setpoints sent
         
-        TrajectorySetpoint path[STEPS];
+    TrajectorySetpoint path[STEPS];
+    VehicleControlMode c_mode;
         
 	void publish_offboard_control_mode();
 	void publish_trajectory_setpoint();
-	void publish_vehicle_command(uint16_t command, float param1 = 0.0, float param2 = 0.0);
+	//void publish_vehicle_command(uint16_t command, float param1 = 0.0, float param2 = 0.0);
 	void InitPath();
 };
 
@@ -184,7 +206,7 @@ void OffboardControl::InitPath()
         double c_alt = cos(rt*a);
 
         // Position
-        path[i].position[0] =  r*c;
+        path[i].position[0] = r*c;
         path[i].position[1] = r*s;
         path[i].position[2] =  FLIGHT_ALTITUDE+h*s_alt;
 
