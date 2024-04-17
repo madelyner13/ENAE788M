@@ -1,0 +1,13 @@
+POSITION CONTROL MODE:
+- arm drone
+- take off
+- maneuver to desired search area
+- switch to offboard mode
+OFFBOARD CONTROL MODE:
+- drone given pre-defined search area (length and width) and search altitude
+- drone will execute a fixed-heading lawnmower search pattern
+- once drone detects AprilTag, it abandons lawnmower search pattern and navigates to position itself directly above the tag
+- drone will then land on the AprilTag
+	- NOTE: if no landing messages found for PX4/ROS2, the drone will hover at a fixed altitude above the AprilTag, and the next two steps are to be ignored
+- drone automatically disarms
+- operator kills drone

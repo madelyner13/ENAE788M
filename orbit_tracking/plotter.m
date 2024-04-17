@@ -35,7 +35,6 @@ grid on
 title('X-Position over Time')
 xlabel('Time (ms)')
 ylabel('X-Position (m)')
-close(gcf)
 
 figure()
 plot(time,y)
@@ -43,7 +42,6 @@ grid on
 title('Y-Position over Time')
 xlabel('Time (ms)')
 ylabel('Y-Position (m)')
-close(gcf)
 
 figure()
 plot(time,z)
@@ -51,7 +49,6 @@ grid on
 title('Z-Position over Time')
 xlabel('Time (ms)')
 ylabel('Z-Position (m)')
-close(gcf)
 
 figure()
 plot3(x,y,z)
@@ -61,7 +58,6 @@ xlabel('X-Position (m)')
 ylabel('Y-Position (m)')
 zlabel('Z-Position (m)')
 axis equal
-close(gcf)
 
 figure()
 plot(x,y)
@@ -69,7 +65,6 @@ grid on
 title('XY-Position')
 xlabel('X-Position (m)')
 ylabel('Y-Position (m)')
-close(gcf)
 
 % v = VideoWriter('traj_tracking','Motion JPEG AVI');
 % v.Quality = 95;
