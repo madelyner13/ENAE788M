@@ -11,3 +11,14 @@ OFFBOARD CONTROL MODE:
 	- NOTE: if no landing messages found for PX4/ROS2, the drone will hover at a fixed altitude above the AprilTag, and the next two steps are to be ignored
 - drone automatically disarms
 - operator kills drone
+
+TOPICS:
+- needed for publishing position, velocity, acceleration, and heading:
+		/fmu/in/trajectory_setpoints
+- AprilTag detection:
+	- in ROS 2, need to determine if the following topic shows data:
+		/tf
+	- on the drone itself, need to determine if the following topic shows data:
+		/tag_pose
+- allegedly need MavLink to land the drone... but could potentially use:
+		/fmu/in/trajectory_setpoints
