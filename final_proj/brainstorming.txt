@@ -22,3 +22,9 @@ TOPICS:
 		/tag_pose
 - allegedly need MavLink to land the drone... but could potentially use:
 		/fmu/in/trajectory_setpoints
+	- okay, in px4_msgs i found "LandingTargetPose.msg"
+	- looks like you can trigger a landing with "VehicleCommand.msg" in the following way:
+		uint16 VEHICLE_CMD_NAV_PRECLAND = 23 # Attempt a precision landing
+	- this looks like helpful code: 
+		https://github.com/PX4/PX4-Autopilot/blob/main/src/modules/commander/Commander.cpp
+		https://github.com/PX4/PX4-Autopilot/blob/main/src/modules/navigator/navigator_main.cpp
