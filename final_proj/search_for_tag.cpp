@@ -174,13 +174,15 @@ void OffboardControl::InitPath()
     int i;
     const double width = SEARCH_WIDTH;
     const double length = SEARCH_LENGTH;
+    // assumes the drone begins the search at the lower left vertex of the rectangular search area
+    // assumes the drone's heading is aligned with the width of the search area
 
     for(i=0;i<STEPS;i++){
     
         // Position
         path[i].position[0] = r*c;
         path[i].position[1] = r*s;
-        path[i].position[2] =  FLIGHT_ALTITUDE+h*s_alt;
+        path[i].position[2] = FLIGHT_ALTITUDE;
 
         // Velocity
         path[i].velocity[0] =  -dadt*r*s;
@@ -194,12 +196,12 @@ void OffboardControl::InitPath()
         if(path[i].velocity[1]<-5)
         	path[i].velocity[0]=-5;
 
-        path[i].velocity[2] =  rt*dadt*h*c_alt;
+        path[i].velocity[2] =  0;
 
         // Acceleration
         path[i].acceleration[0] =  -dadt*dadt*r*c;
         path[i].acceleration[1] =  -dadt*dadt*r*s;
-        path[i].acceleration[2] =  -rt*rt*dadt*dadt*h*s_alt;
+        path[i].acceleration[2] =  0;
 
         // calculate yaw as direction of velocity
         // plus pi/2 since ROS yaw=0 lines up with x axis with points out to
