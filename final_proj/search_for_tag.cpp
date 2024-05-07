@@ -44,14 +44,21 @@
 #include <px4_msgs/msg/vehicle_control_mode.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <stdint.h>
+#include <math.h>
 
 #include <chrono>
 #include <iostream>
 
-#define FLIGHT_ALTITUDE -1.5f
-#define RATE            20 	// loop rate hz
-#define SEARCH_WIDTH	5	// search area width
-#define SEARCH_LENGTH	10	// search area length	
+#define FLIGHT_ALTITUDE -1.5f		// flight altitude (m)
+#define	HOVER_ALT	-0.5f		// hover altitude (m)
+#define RATE            20 		// loop rate (hz)
+#define SEARCH_WIDTH	2.5		// search area width (m)
+#define SEARCH_LENGTH	5		// search area length (m)
+#define LIN_VEL 	0.25 		// linear velocity (m/s)
+#define ANG_RATE	3		// time to complete a full circle (s)
+#define PATH_DIST	1		// distance between passes along length (m)
+#define CYCLE_S		10000		// time to complete a search
+#define STEPS		(CYCLE_S*RATE)	// iterations
 	
 #define PI  3.14159265358979323846264338327950
 
@@ -125,10 +132,7 @@ private:
         
 	void publish_offboard_control_mode();
 	void publish_trajectory_setpoint();
-	void move_straight(); // moves drone straight
-	void turn_path(); // turns drone
-	void land_drone(); // lands drone
-	//void publish_vehicle_command(uint16_t command, float param1 = 0.0, float param2 = 0.0);
+	void publish_vehicle_command(uint16_t command, float param1 = 0.0, float param2 = 0.0);
 	void InitPath();
 };
 
@@ -165,50 +169,216 @@ void OffboardControl::publish_trajectory_setpoint()
 	path[offboard_setpoint_counter_].timestamp = this->get_clock()->now().nanoseconds() / 1000;
 	trajectory_setpoint_publisher_->publish(path[offboard_setpoint_counter_]);
 
-	printf("x:%7.3f y:%7.3f z:%7.3f yaw:%7.1f\n", path[offboard_setpoint_counter_].position[0], path[offboard_setpoint_counter_].position[1], path[offboard_setpoint_counter_].position[2], path[offboard_setpoint_counter_].yaw*180.0f/PI);
+	printf("i:%ld x:%7.3f y:%7.3f vx:%7.3f vy:%7.3f yaw:%7.1f\n",offboard_setpoint_counter_, path[offboard_setpoint_counter_].position[0], path[offboard_setpoint_counter_].position[1], path[offboard_setpoint_counter_].velocity[0], path[offboard_setpoint_counter_].velocity[1], path[offboard_setpoint_counter_].yaw*180.0f/PI);
 
 }
 
 void OffboardControl::InitPath()
 {
     int i;
+    const double loop_rate = RATE;
     const double width = SEARCH_WIDTH;
     const double length = SEARCH_LENGTH;
+    const double linvel = LIN_VEL;
+    const double angrate = ANG_RATE;
+    const double path_dist = PATH_DIST;
+    
+    const double dt = 1.0/loop_rate;
+    const double dadt_cw = (2.0*PI)/angrate;
+    const double dadt_ccw = -(2.0*PI)/angrate;
+    const double rad = path_dist/2.0;
+    
+    double pos[2] = {0, 0}; // holds the position within the search area
+    double t = 0;
+    
+    // assumes length is larger than width
     // assumes the drone begins the search at the lower left vertex of the rectangular search area
     // assumes the drone's heading is aligned with the width of the search area
-
-    for(i=0;i<STEPS;i++){
+    // things to keep track of:
+    	// distance traveled along width 
+    	// distance traveled along length
+    // x-distance is along width
+    // y-distance is along length
+    // need to determine number of paths
+    // parts of the pattern:
+    	// move along +width
+    	// turn right
+    	// move along -width
+    	// turn left
+    	// stop at end of +length
+	
+    int flag = 0;
+	
+    for(i=0;i<STEPS;i++) {
     
-        // Position
-        path[i].position[0] = r*c;
-        path[i].position[1] = r*s;
-        path[i].position[2] = FLIGHT_ALTITUDE;
-
-        // Velocity
-        path[i].velocity[0] =  -dadt*r*s;
-        if(path[i].velocity[0]>5)
-        	path[i].velocity[0]=5;
-        if(path[i].velocity[0]<-5)
-        	path[i].velocity[0]=-5;
-        path[i].velocity[1] =   dadt*r*c;
-        if(path[i].velocity[1]>5)
-        	path[i].velocity[0]=5;
-        if(path[i].velocity[1]<-5)
-        	path[i].velocity[0]=-5;
-
-        path[i].velocity[2] =  0;
-
-        // Acceleration
-        path[i].acceleration[0] =  -dadt*dadt*r*c;
-        path[i].acceleration[1] =  -dadt*dadt*r*s;
-        path[i].acceleration[2] =  0;
-
-        // calculate yaw as direction of velocity
-        // plus pi/2 since ROS yaw=0 lines up with x axis with points out to
-        // the right, not forward along y axis
-        path[i].yaw = -atan2(-path[i].velocity[1], path[i].velocity[0])+(PI/2);
-
-        printf("x:%7.3f y:%7.3f yaw:%7.1f\n", path[i].position[0], path[i].position[1], path[i].yaw*180.0f/PI);
+	if (i==0) {
+		path[i].position[0] = pos[0]+linvel*dt;
+		path[i].position[1] = pos[1];
+		path[i].position[2] = FLIGHT_ALTITUDE;
+		
+		path[i].velocity[0] = linvel;
+		path[i].velocity[1] = 0;
+		path[i].velocity[2] = 0;
+		
+		path[i].acceleration[0] = 0;
+		path[i].acceleration[1] = 0;
+		path[i].acceleration[2] = 0;
+		
+		path[i].yaw = 0;
+		
+		pos[0] = path[i].position[0];
+		pos[1] = path[i].position[1];
+	}
+	else {
+		if (flag==0) {
+			// moving in positive width direction
+			// needs to continue straight along +width
+			pos[0] = path[i-1].position[0];
+			pos[1] = path[i-1].position[1];
+			
+			path[i].position[0] = pos[0]+linvel*dt;
+			path[i].position[1] = pos[1];
+			path[i].position[2] = FLIGHT_ALTITUDE;
+			
+			path[i].velocity[0] = linvel;
+			path[i].velocity[1] = 0;
+			path[i].velocity[2] = 0;
+			
+			path[i].acceleration[0] = 0;
+			path[i].acceleration[1] = 0;
+			path[i].acceleration[2] = 0;
+			
+			path[i].yaw = 0;
+			
+			pos[0] = path[i].position[0];
+			pos[1] = path[i].position[1];
+			
+			if (pos[0]>=width) {
+				flag = 1; // turn right
+			}
+		}
+		else if (flag==1) {
+			// needs to turn right
+			
+			if (pos[0]==path[i-1].position[0]) {
+				t = 0.01;
+			}
+			else {
+				t = t+0.01;
+			}
+			
+			double a = -(PI/2.0)+t*(2.0*PI/angrate);
+			double c = cos(a);
+			double s = sin(a);
+			
+			path[i].position[0] = rad*c+pos[0];
+			path[i].position[1] = rad*s+pos[1]+rad;
+			path[i].position[2] = FLIGHT_ALTITUDE;
+			
+			path[i].velocity[0] = -dadt_cw*rad*s;
+			path[i].velocity[1] = dadt_cw*rad*c;
+			path[i].velocity[2] = 0;
+			
+			path[i].acceleration[0] = -dadt_cw*dadt_cw*rad*c;
+			path[i].acceleration[1] = -dadt_cw*dadt_cw*rad*s;
+			path[i].acceleration[2] = 0;
+			
+			path[i].yaw = -atan2(-path[i].velocity[1], path[i].velocity[0]);
+			
+			if (abs(180.0-abs(path[i].yaw)*180.0/PI) <= 0.05) {
+				flag = 2; // go negative width
+			}
+			else if (path[i].position[1]>=length) {
+				flag = 4;
+			}			
+		}
+		else if (flag==2) {
+			// moving in negative width direction
+			// needs to continue straight along -width
+			pos[0] = path[i-1].position[0];
+			pos[1] = path[i-1].position[1];
+			
+			path[i].position[0] = pos[0]-linvel*dt;
+			path[i].position[1] = pos[1];
+			path[i].position[2] = FLIGHT_ALTITUDE;
+			
+			path[i].velocity[0] = -linvel;
+			path[i].velocity[1] = 0;
+			path[i].velocity[2] = 0;
+			
+			path[i].acceleration[0] = 0;
+			path[i].acceleration[1] = 0;
+			path[i].acceleration[2] = 0;
+			
+			path[i].yaw = PI;
+			
+			pos[0] = path[i].position[0];
+			pos[1] = path[i].position[1];
+			
+			if (pos[0]<=0) {
+				flag = 3; // turn left
+			}
+		}
+		else if (flag==3) {
+			// needs to turn left
+			
+			if (pos[0]==path[i-1].position[0]) {
+				t = 0.01;
+			}
+			else {
+				t = t+0.01;
+			}
+			
+			double a = -(3.0*PI/2.0)+t*(2.0*PI/angrate);
+			double c = cos(a);
+			double s = sin(a);
+			
+			path[i].position[0] = -rad*c+pos[0];
+			path[i].position[1] = -rad*s+pos[1]+rad;
+			path[i].position[2] = FLIGHT_ALTITUDE;
+			
+			path[i].velocity[0] = dadt_ccw*rad*s;
+			path[i].velocity[1] = -dadt_ccw*rad*c;
+			path[i].velocity[2] = 0;
+			
+			path[i].acceleration[0] = dadt_ccw*dadt_ccw*rad*c;
+			path[i].acceleration[1] = dadt_ccw*dadt_ccw*rad*s;
+			path[i].acceleration[2] = 0;
+			
+			path[i].yaw = atan2(-path[i].velocity[1], path[i].velocity[0]);
+			
+			if ((abs(0-abs(path[i].yaw)*180.0/PI) <= 0.05) ) {
+				flag = 0; // go positive width
+			}
+			else if (path[i].position[1]>=length) {
+				flag = 4;
+			}
+		}
+		else if (flag==4) {
+			// end of search path, drone should hover low
+			pos[0] = path[i-1].position[0];
+			pos[1] = path[i-1].position[1];
+			
+			path[i].position[0] = pos[0];
+			path[i].position[1] = pos[1];
+			path[i].position[2] = HOVER_ALT;
+			
+			path[i].velocity[0] = 0;
+			path[i].velocity[1] = 0;
+			path[i].velocity[2] = (HOVER_ALT-FLIGHT_ALTITUDE)/dt;
+			
+			path[i].acceleration[0] = 0;
+			path[i].acceleration[1] = 0;
+			path[i].acceleration[2] = 0;
+			
+			path[i].yaw = path[i-1].yaw;
+			
+			pos[0] = path[i].position[0];
+			pos[1] = path[i].position[1];
+		}
+	}
+	
+	//printf("x:%7.3f y:%7.3f yaw:%7.1f\n", path[i].position[0], path[i].position[1], path[i].yaw*180.0f/PI);
     }
 
     // calculate yaw_rate by dirty differentiating yaw
